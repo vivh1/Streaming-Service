@@ -1,0 +1,352 @@
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ */
+package com.mycompany.streamingclient;
+
+import fr.bmartel.speedtest.SpeedTestReport;
+import fr.bmartel.speedtest.SpeedTestSocket;
+import fr.bmartel.speedtest.inter.ISpeedTestListener;
+import fr.bmartel.speedtest.model.SpeedTestError;
+import java.io.BufferedReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Scanner;
+import java.util.concurrent.CountDownLatch;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.LogManager;
+
+/*
+Runs a 5-second download speed test to measure the connection in Kbps
+Asks user to choose a preferred video format (avi, mp4, mkv)
+Connects to StreamingServer on port 8000 and sends the speed and format
+Receives filtered file list from server and displays it
+Asks user to choose a file and optionally streaming protocol
+Sends the choice to the server and waits for READY signal
+Launches FFmpeg with ProcessBuilder to receive and play the stream
+ */
+public class StreamingClient {
+
+    static Logger log = LogManager.getLogger(StreamingClient.class);
+
+    // The server's address and control port
+    private static final String SERVER_HOST = "localhost";
+    private static final int SERVER_PORT = 8000;
+
+    // The port FFmpeg listens on for the incoming video stream
+    private static final int STREAM_PORT = 9000;
+
+    // The URL used for the download speed test (5 MB file, ~5 second test)
+    private static final String SPEED_TEST_URL
+            = "http://ipv4.download.thinkbroadband.com/5MB.zip";
+
+    // Scanner for reading user input from the console
+    private final Scanner scanner = new Scanner(System.in);
+
+    public void run() {
+
+        // measure the connection speed
+        int speedKbps = measureSpeed();
+        log.info("Measured download speed: {} Kbps", speedKbps);
+
+        // ask user to pick a format
+        String format = askFormat();
+        log.info("User selected format: {}", format);
+
+        // connect to server and handle communication
+        connectAndStream(speedKbps, format);
+    }
+
+    // 5 second download test using JSpeedTest and returns measured download speed 
+    // If speed test fails -> value of 1000 Kbps is returned and application can continue
+    private int measureSpeed() {
+        log.info("Starting 5-second download speed test...");
+
+        // using an array so it can be set from inside the anonymous listener class 
+        final int[] resultKbps = {1000};
+
+        // CountDownLatch with count 1 = call countDown() once the test ends
+        // which unblocks the await() call below
+        CountDownLatch latch = new CountDownLatch(1);
+
+        SpeedTestSocket speedTestSocket = new SpeedTestSocket();
+
+        speedTestSocket.addSpeedTestListener(new ISpeedTestListener() {
+
+            @Override
+            public void onCompletion(SpeedTestReport report) {
+                // Convert from bits per second to Kbps
+                double bps = report.getTransferRateBit().doubleValue();
+                resultKbps[0] = (int) (bps / 1000);
+                log.info("Speed test complete: {} Kbps", resultKbps[0]);
+                latch.countDown();
+            }
+
+            @Override
+            public void onError(SpeedTestError error, String message) {
+                log.warn("Speed test error: {} - using fallback speed of 1000 Kbps", message);
+                latch.countDown();
+            }
+
+            @Override
+            public void onProgress(float percent, SpeedTestReport report) {
+                // Log progress every time JSpeedTest reports an interim result
+                double bps = report.getTransferRateBit().doubleValue();
+                log.debug("Speed test progress: {}% - current speed: {} Kbps",
+                        (int) percent, (int) (bps / 1000));
+            }
+        });
+
+        // Start the download test
+        speedTestSocket.startDownload(SPEED_TEST_URL);
+
+        try {
+            // Block here until test completes or errors
+            latch.await();
+        } catch (InterruptedException e) {
+            log.warn("Speed test interrupted - using fallback speed of 1000 Kbps");
+            Thread.currentThread().interrupt();
+        }
+
+        return resultKbps[0];
+    }
+
+    // asks the user to type preferred video format (avi, mp4, mkv are accepted) 
+    // repeats until valid format is entered
+    private String askFormat() {
+        String format = "";
+        while (true) {
+            System.out.println("Please choose a video format (avi / mp4 / mkv):");
+            format = scanner.nextLine().trim().toLowerCase();
+            if (format.equals("avi") || format.equals("mp4") || format.equals("mkv")) {
+                break;
+            }
+            System.out.println("Invalid format. Please enter avi, mp4, or mkv.");
+        }
+        return format;
+    }
+
+    // Opens the socket connection to the server and handles sending speed+format, 
+    // receiving the file list, asking the user to choose, sending the choice, starting FFmpeg
+    private void connectAndStream(int speedKbps, String format) {
+        log.info("Connecting to server at {}:{}", SERVER_HOST, SERVER_PORT);
+
+        try (
+                Socket socket = new Socket(SERVER_HOST, SERVER_PORT); PrintWriter out = new PrintWriter(socket.getOutputStream(), true); BufferedReader in = new BufferedReader(
+                        new InputStreamReader(socket.getInputStream()));) {
+            log.info("Connected to server.");
+
+            // Send speed and format to the server
+            // server expects two lines: speed in Kbps then format
+            out.println(speedKbps);
+            out.println(format);
+            log.info("Sent speed ({} Kbps) and format ({}) to server.", speedKbps, format);
+
+            // Receive the filtered file list from the server
+            // The server first sends the number of files, then one filename per line
+            String countLine = in.readLine();
+            if (countLine == null) {
+                log.error("Server closed connection unexpectedly.");
+                return;
+            }
+
+            int fileCount = Integer.parseInt(countLine.trim());
+            log.info("Server sent {} matching files.", fileCount);
+
+            if (fileCount == 0) {
+                System.out.println("No files available for your connection speed and format.");
+                log.warn("Server returned 0 files for speed {} Kbps and format {}.",
+                        speedKbps, format);
+                return;
+            }
+
+            // Read each filename into a list and display it to the user
+            List<String> fileList = new ArrayList<>();
+            System.out.println("\nAvailable files:");
+            for (int i = 0; i < fileCount; i++) {
+                String filename = in.readLine();
+                fileList.add(filename);
+                System.out.println("  " + (i + 1) + ". " + filename);
+            }
+
+            // Ask user to choose a file
+            String chosenFile = askFileChoice(fileList);
+            log.info("User chose file: {}", chosenFile);
+
+            // Ask user to choose a protocol
+            // The protocol can be chosen manually or assigned automatically
+            // based on the resolution of the chosen file
+            String chosenProtocol = askProtocol(chosenFile);
+            log.info("Using protocol: {}", chosenProtocol);
+
+            // Send file and protocol choice to the server
+            out.println(chosenFile);
+            out.println(chosenProtocol);
+            log.info("Sent file choice and protocol to server.");
+
+            // Wait for server READY
+            String serverResponse = in.readLine();
+            if (serverResponse == null || serverResponse.startsWith("ERROR")) {
+                log.error("Server error: {}", serverResponse);
+                System.out.println("Server error: " + serverResponse);
+                return;
+            }
+
+            if (serverResponse.equals("READY")) {
+                log.info("Server is ready. Starting FFmpeg receiver...");
+                System.out.println("Server is ready. Starting playback...");
+
+                // For RTP/UDP, receive the SDP file from the server before starting FFplay
+                if (chosenProtocol.equalsIgnoreCase("RTP/UDP")) {
+                    receiveSdpFile(in);
+                }
+                // start local reciever thread first
+                startReceiving(chosenProtocol);
+                
+                // give FFplay 500ms to open socket listener
+                try {
+                    Thread.sleep(500);
+                    
+                } catch (InterruptedException ignored)
+                {
+                }
+            }
+
+        } catch (IOException e) {
+            log.error("Connection error: {}", e.getMessage());
+        }
+    }
+
+    // displays the file list and asks user to pick one by entering its number. 
+    // Repeats until a valid number is entered.
+    private String askFileChoice(List<String> fileList) {
+        while (true) {
+            System.out.println("\nEnter the number of the file you want to watch:");
+            String input = scanner.nextLine().trim();
+            try {
+                int choice = Integer.parseInt(input);
+                if (choice >= 1 && choice <= fileList.size()) {
+                    return fileList.get(choice - 1);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+            System.out.println("Invalid choice. Enter a number between 1 and " + fileList.size());
+        }
+    }
+
+    /* 
+    asks user to manually choose streaming protocol or press Enter to let 
+    client choose automatically based on resolution of selected file
+    
+    240p        -> TCP
+    360p,  480p -> UDP
+    720p, 1080p -> RTP/UDP
+     */
+    private String askProtocol(String chosenFile) {
+        System.out.println("\nChoose a streaming protocol (TCP / UDP / RTP/UDP)");
+        System.out.println("Or press Enter to choose automatically based on resolution:");
+        String input = scanner.nextLine().trim().toUpperCase();
+
+        // If user typed valid protocol
+        if (input.equals("TCP") || input.equals("UDP") || input.equals("RTP/UDP")) {
+            return input;
+        }
+
+        // else determine from resolution in filename
+        String resolution = "";
+        try {
+            // extract the resolution by splitting on - and then on .
+            String[] parts = chosenFile.split("-");
+            String resPart = parts[1].split("\\.")[0];  // e.g. "480p"
+            resolution = resPart;
+        } catch (Exception e) {
+            log.warn("Could not parse resolution from filename: {}", chosenFile);
+        }
+
+        switch (resolution) {
+            case "240p":
+                log.info("Auto-selected protocol: TCP (for 240p)");
+                return "TCP";
+            case "360p":
+            case "480p":
+                log.info("Auto-selected protocol: UDP (for {})", resolution);
+                return "UDP";
+            case "720p":
+            case "1080p":
+                log.info("Auto-selected protocol: RTP/UDP (for {})", resolution);
+                return "RTP/UDP";
+            default:
+                log.warn("Unknown resolution '{}', defaulting to UDP", resolution);
+                return "UDP";
+        }
+    }
+
+    // launches FFplay as a stream receiver using ProcessBuilder
+    // FF[lay connects to the stream the server started and plays it back
+    private void startReceiving(String protocol) {
+        log.info("Starting FFplay receiver for protocol: {}", protocol);
+
+        try {
+            List<String> command = new ArrayList<>();
+            command.add("C:\\ffmpeg\\bin\\ffplay.exe");
+
+            // Build input URL based on the chosen protocol
+            switch (protocol.toUpperCase()) {
+                case "TCP":
+                    command.add("tcp://localhost:" + STREAM_PORT);
+                    break;
+                case "UDP":
+                    command.add("udp://localhost:" + STREAM_PORT);
+                    break;
+                case "RTP/UDP":
+                    command.add("-protocol_whitelist");
+                    command.add("file,rtp,udp");
+                    command.add("-i");
+                    command.add(System.getProperty("user.dir") + "/video.sdp");
+                    break;
+                default:
+                    command.add("udp://localhost:" + STREAM_PORT);
+            }
+
+            log.info("FFplay receive command: {}", String.join(" ", command));
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.inheritIO();  // lets FFplay use the system console and open its window
+            Process process = pb.start();
+
+            log.info("FFplay receiver process started.");
+
+        } catch (IOException e) {
+            log.error("Failed to start FFplay receiver: {}", e.getMessage());
+        }
+    }
+
+    // reads the SDP file contents sent by the server and writes them to a 
+    // local video.sdp file that FFplay will use
+    private void receiveSdpFile(BufferedReader in) {
+        String sdpPath = System.getProperty("user.dir") + "/video.sdp";
+        log.info("Receiving SDP file from server, saving to: {}", sdpPath);
+
+        try (PrintWriter sdpWriter = new PrintWriter(new FileWriter(sdpPath))) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                if (line.equals("SDP_END")) {
+                    break;
+                }
+                sdpWriter.println(line);
+            }
+            log.info("SDP file saved successfully.");
+        } catch (IOException e) {
+            log.error("Error writing SDP file: {}", e.getMessage());
+        }
+    }
+
+    public static void main(String[] args) {
+        log.info("=== Streaming Client Starting ===");
+        new StreamingClient().run();
+    }
+}

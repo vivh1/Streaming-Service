@@ -1,0 +1,4 @@
+com\mycompany\streamingserver\VideoHandler$VideoFile.class
+com\mycompany\streamingserver\StreamingServer.class
+com\mycompany\streamingserver\ClientHandler.class
+com\mycompany\streamingserver\VideoHandler.class
