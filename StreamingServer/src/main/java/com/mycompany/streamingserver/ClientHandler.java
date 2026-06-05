@@ -36,12 +36,15 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
-        // track connection start time for stats logging
-        long startTime = System.currentTimeMillis(); 
         // tracking variables (for stats)
         int clientSpeedKbps = 0;
         String chosenFile = "unknown";
         String chosenProtocol = "unknown";
+        // bitrate of chosen resolution
+        int bitrateKbps = -1;
+        // when FFmpeg actually started (duration stat)
+        long streamStartTime = 0;
+        Process streamingProcess = null;
 
         try (
             BufferedReader in = new BufferedReader(
@@ -101,10 +104,11 @@ public class ClientHandler implements Runnable {
                 return;
             }
 
+            /*
             out.println("READY");
             log.info("Notified client [{}]: READY to stream.", clientSocket.getInetAddress());
 
-            // Launch FFmpeg external streaming process 
+            Launch FFmpeg external streaming process 
             Process streamingProcess = server.startStreaming(
                     filePath, chosenProtocol, clientSocket.getInetAddress().getHostAddress()
             );     
@@ -120,27 +124,74 @@ public class ClientHandler implements Runnable {
                 streamingProcess.waitFor(); 
                 log.info("FFmpeg streaming process finished naturally.");
             }
+        */
+            // bitrate of the chosen resolution, for stats
+            bitrateKbps = server.getBitrateForFilename(chosenFile);
 
+            // unique port block + SDP path for THIS client -> safe concurrency
+            int basePort = server.allocateStreamPort();
+            String sdpPath = server.getSdpPathFor(basePort);
+            String clientIP = clientSocket.getInetAddress().getHostAddress();
+
+            // Each protocol needs a different startup order
+            if (chosenProtocol.equalsIgnoreCase("UDP")) {
+                // receiver must be up before pushing UDP packets
+                out.println("READY " + basePort); // give client the port
+                String go = in.readLine();        // wait for client
+                if (go == null || !go.trim().equalsIgnoreCase("GO")) {
+                    log.warn("No GO from client, aborting.");
+                    return;
+                }
+                streamStartTime = System.currentTimeMillis();
+                streamingProcess = server.startStreaming(filePath, chosenProtocol, clientIP, basePort, sdpPath);
+
+            } else if (chosenProtocol.equalsIgnoreCase("TCP")) {
+                // ffmpeg listens first then let client connect
+                streamStartTime = System.currentTimeMillis();
+                streamingProcess = server.startStreaming(filePath, chosenProtocol, clientIP, basePort, sdpPath);
+                Thread.sleep(400);                 // let the listen socket bind
+                out.println("READY " + basePort);  // then client can connect
+
+            } else { // RTP/UDP
+                // ffmpeg must run first to write the SDP
+                // then read SDP and send it to client
+                // then client can start ffplay
+                streamStartTime = System.currentTimeMillis();
+                streamingProcess = server.startStreaming(filePath, chosenProtocol, clientIP, basePort, sdpPath);
+                out.println("READY " + basePort);
+                server.sendSdpFile(out, sdpPath);
+            }
+
+            log.info("Streaming started for [{}] on port {} ({}).", clientIP, basePort, chosenProtocol);
+
+            if (streamingProcess != null) {
+                // block until the file is fully streamed
+                streamingProcess.waitFor(); 
+                log.info("FFmpeg finished streaming for [{}].", clientIP);
+            }
         } catch (NumberFormatException e) {
             log.error("Invalid speed value received from client: {}", e.getMessage());
         } catch (IOException e) {
             log.error("Communication error with client: {}", e.getMessage());
         } catch (InterruptedException e) {
             log.warn("Streaming process thread was interrupted: {}", e.getMessage());
-            Thread.currentThread().interrupt(); // Restore the interrupted status flag
-        } finally 
-        {
+            // Restore the interrupted status flag
+            Thread.currentThread().interrupt();
+        } finally {
             // Calculate total playback session duration in sec
             long endTime = System.currentTimeMillis();
-            long playbackDurationSeconds = (endTime - startTime) / 1000;
+            // streamStartTime stays 0 if streaming never started
+            long playbackDurationSeconds = 
+                    streamStartTime > 0 ? (endTime - streamStartTime) / 1000 : 0;
 
-            // Structured data in format IP;Speed;FileChosen;Protocol;Duration
-            statsLogger.info(String.format("%s;%d;%s;%s;%d", 
+            // Structured data in format IP;Speed;FileChosen;Protocol;Duration;BitrateKbps
+            statsLogger.info(String.format("%s;%d;%s;%s;%d;%d", 
                     clientSocket.getInetAddress().getHostAddress(),
                     clientSpeedKbps,
                     chosenFile,
                     chosenProtocol,
-                    playbackDurationSeconds));
+                    playbackDurationSeconds,
+                    bitrateKbps));
 
                 // Clean up + release network socket resources
                 try {

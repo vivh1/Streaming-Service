@@ -260,8 +260,8 @@ public class VideoHandler {
     public List<VideoFile> getAvailableFiles() {
         return availableFiles;
     }
-
-    // ── Quick test ────────────────────────────────────────────────────────
+/*
+    // test
     public static void main(String[] args) {
         String videosDir = System.getProperty("user.dir") + "/videos/";
         log.info("Starting VideoHandler test. Videos dir: {}", videosDir);
@@ -277,5 +277,5 @@ public class VideoHandler {
             log.error("Failed to initialise VideoHandler: {}", e.getMessage());
         }
     }
-
+*/
 }

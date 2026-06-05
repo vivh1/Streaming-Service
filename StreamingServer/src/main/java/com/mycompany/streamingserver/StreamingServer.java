@@ -15,20 +15,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /*
 Runs VideoHandler to scan /videos and create any missing files
 Opens a ServerSocket on port 8000 and waits for a client to connect.
-When client connects:
+When client connects  a ClientHandler task is submitted to a thread
+pool, so multiple clients can be served at the same time.
+Every ClientHander:
 Receives the client download speed (Kbps) and chosen format
 Finds the available file list and returns matching
- Receives client chosen filename and chosen protocol
- Start FFmpeg streaming using ProcessBuilder (placeholder for now).
- *
- * All communication over the socket uses plain text lines (PrintWriter / BufferedReader).
- Handles one client at a time!!!!!
+Receives client chosen filename and chosen protocol
+Starts FFmpeg streaming using ProcessBuilder 
+
+ All communication over the socket uses plain text lines (PrintWriter / BufferedReader).
  */
 public class StreamingServer {
 
@@ -44,9 +46,16 @@ public class StreamingServer {
 
     private VideoHandler videoHandler;
     
-    // /////////////////////////////////manage multiple client threads safely
+    // manage multiple client threads safely
     private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
+    // Each client gets its own block of ports so concurrent FFmpeg processes
+    // never collide on the same socket
+    //  base -> media / RTP port
+    // base + 1 -> RTCP port (only for RTP/UDP)
+    // The next client starts 4 ports higher, leaving room for the RTCP pair
+    private final AtomicInteger nextStreamPort = new AtomicInteger(9000);
+    
     // Constructor 
     // initialises VideoHandler, scans /videos and transforms missing 
     // files before the server starts accepting connections
@@ -60,8 +69,8 @@ public class StreamingServer {
     }
 
     // opens the ServerSocket and enters the main accept loop
-    // For Part A the server handles one client at a time. 
-    // in Part B this will be replaced with a threaded approach
+    // every accepted client is wrapped in a ClientHandler task and handed to
+    // the thread pool, so the loop is free to accept the next client
     public void start() {
         log.info("Starting server on port {}...", PORT);
 
@@ -69,8 +78,6 @@ public class StreamingServer {
             log.info("Server is listening on port {}", PORT);
 
             // keeps running so the server can serve multiple clients 
-            // one after another 
-            // (sequential, not concurrent yet)
             while (true) {
                 log.info("Waiting for client connection...");
                 Socket clientSocket = serverSocket.accept();
@@ -225,6 +232,22 @@ public class StreamingServer {
         return -1;
     }
 
+    // finds the bitrate of a file from its name
+    // reuses getMaxBitrateForResolution so the bitrate table is found in one place 
+    // used by ClientHandler when writing the stats line
+    // returns -1 if the resolution cannot be parsed
+    public int getBitrateForFilename(String filename) {
+        try {
+            // filename pattern Name-Resolution.format
+            String[] parts = filename.split("-");
+            String resolution = parts[1].split("\\.")[0];
+            return getMaxBitrateForResolution(resolution);
+        } catch (Exception e) {
+            log.warn("Could not parse bitrate from filename: {}", filename);
+            return -1;
+        }
+    }
+    
     // searches the available file list for a file whose toString() matches 
     // chosen filename string sent by client
     public String findFilePath(String chosenFile) {
@@ -236,10 +259,24 @@ public class StreamingServer {
         return null;
     }
 
-    // launches FFmpeg as a streaming server using ProcessBuilder. 
-    // is called after the client has chosen a file and protocol.
-    public Process startStreaming(String filePath, String protocol, String clientIP) {
-        log.info("Starting {} stream for file: {}", protocol, filePath);
+    // sends new port block for one client and increases the counter for the next
+    public int allocateStreamPort() {
+        // getAndAdd returns the current value, then increases it by 4
+        return nextStreamPort.getAndAdd(4);
+    }
+ 
+    // Builds one per client SDP path from its base port (video_9000.sdp)
+    // A unique file per client means two concurrent RTP/UDP sessions never
+    // overwrite each ones SDP
+    public String getSdpPathFor(int basePort) {
+        return System.getProperty("user.dir") + "/video_" + basePort + ".sdp";
+    }
+    
+    // launches FFmpeg as a streaming server using ProcessBuilder
+    // is called after the client has chosen a file and protocol
+    public Process startStreaming(String filePath, String protocol, String clientIP,
+            int basePort, String sdpPath) {
+        log.info("Starting {} stream for file: {}", protocol, filePath, basePort);
 
         try {
             List<String> command = new ArrayList<>();
@@ -247,21 +284,26 @@ public class StreamingServer {
 
             switch (protocol.toUpperCase()) {
                 case "TCP":
+                    // FFmpeg is the listenerI
+                    // binds the port and waits for ffplay to connect
                     command.add("-i");
                     command.add(filePath);
                     command.add("-f");
                     command.add("avi");
-                    command.add("tcp://127.0.0.1:9000?listen");
+                    command.add("tcp://localhost:" + basePort + "?listen");
                     break;
                 case "UDP":
+                    //FFmpeg is the sender
+                    // sends packets at the client
                     command.add("-re");
                     command.add("-i");
                     command.add(filePath);
                     command.add("-f");
                     command.add("avi");
-                    command.add("udp://" + clientIP + ":9000");
+                    command.add("udp://" + clientIP + ":" + basePort);
                     break;
                 case "RTP/UDP":
+                    // sends at client and writes SDP file
                     command.add("-re");
                     command.add("-i");
                     command.add(filePath);
@@ -271,8 +313,9 @@ public class StreamingServer {
                     command.add("-f");
                     command.add("rtp");
                     command.add("-sdp_file");
-                    command.add(System.getProperty("user.dir") + "/video.sdp");
-                    command.add("rtp://127.0.0.1:5004");
+                    command.add(sdpPath);
+                    command.add("rtp://" + clientIP + ":" + basePort + 
+                            "?rtcpport=" + (basePort + 1));
                     break;
                 default:
                     log.warn("Unknown protocol: {}. Defaulting to UDP.", protocol);
@@ -281,7 +324,7 @@ public class StreamingServer {
                     command.add(filePath);
                     command.add("-f");
                     command.add("avi");
-                    command.add("udp://" + clientIP + ":9000");
+                    command.add("udp://" + clientIP + ":" + basePort);
             }
 
             log.info("FFmpeg stream command: {}", String.join(" ", command));
@@ -324,17 +367,15 @@ public class StreamingServer {
         }
     }
 
-    /*
-    reads the video.sdp file that FFmpeg generated and sends its contents to  client 
-    over the socket, line by line
-    the client will write these lines to its own local video.sdp file
-     */
-    public void sendSdpFile(PrintWriter out) {
-        String sdpPath = System.getProperty("user.dir") + "/video.sdp";
+    // Reads the SDP file that FFmpeg generated for this client and sends its
+    // contents over the socket. 
+    // The client writes these lines to its own local video.sdp file.
+    public void sendSdpFile(PrintWriter out, String sdpPath) {
         File sdpFile = new File(sdpPath);
 
-        // so we wait up to 3 seconds for SDP file appear
+        // wait up to 3 seconds for SDP file appear
         int attempts = 0;
+        
         while (!sdpFile.exists() && attempts < 30) {
             try {
                 Thread.sleep(100);

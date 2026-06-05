@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 /*
-Runs a 5-second download speed test to measure the connection in Kbps
+Runs a 5 second download speed test to measure the connection in Kbps
 Asks user to choose a preferred video format (avi, mp4, mkv)
 Connects to StreamingServer on port 8000 and sends the speed and format
 Receives filtered file list from server and displays it
@@ -33,14 +33,14 @@ public class StreamingClient {
 
     static Logger log = LogManager.getLogger(StreamingClient.class);
 
-    // The server's address and control port
+    // Server address and control port
     private static final String SERVER_HOST = "localhost";
     private static final int SERVER_PORT = 8000;
 
-    // The port FFmpeg listens on for the incoming video stream
+    // Default port FFplay listens on if the server does not send one
     private static final int STREAM_PORT = 9000;
 
-    // The URL used for the download speed test (5 MB file, ~5 second test)
+    // The URL used for the download speed test
     private static final String SPEED_TEST_URL
             = "http://ipv4.download.thinkbroadband.com/5MB.zip";
 
@@ -48,7 +48,6 @@ public class StreamingClient {
     private final Scanner scanner = new Scanner(System.in);
 
     public void run() {
-
         // measure the connection speed
         int speedKbps = measureSpeed();
         log.info("Measured download speed: {} Kbps", speedKbps);
@@ -111,7 +110,7 @@ public class StreamingClient {
             log.warn("Speed test interrupted - using fallback speed of 1000 Kbps");
             Thread.currentThread().interrupt();
         }
-
+        
         return resultKbps[0];
     }
 
@@ -136,8 +135,11 @@ public class StreamingClient {
         log.info("Connecting to server at {}:{}", SERVER_HOST, SERVER_PORT);
 
         try (
-                Socket socket = new Socket(SERVER_HOST, SERVER_PORT); PrintWriter out = new PrintWriter(socket.getOutputStream(), true); BufferedReader in = new BufferedReader(
-                        new InputStreamReader(socket.getInputStream()));) {
+            Socket socket = new Socket(SERVER_HOST, SERVER_PORT); 
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true); 
+            BufferedReader in = new BufferedReader(
+                new InputStreamReader(socket.getInputStream()));) 
+        {
             log.info("Connected to server.");
 
             // Send speed and format to the server
@@ -196,28 +198,49 @@ public class StreamingClient {
                 return;
             }
 
-            if (serverResponse.equals("READY")) {
+            if (serverResponse.startsWith("READY")) {
+                int streamPort = STREAM_PORT;
+                
+                // pull out the port number the server allocated for this client
+                String[] parts = serverResponse.split("\\s+");
+                
+                if (parts.length >= 2) {
+                    try { 
+                        streamPort = Integer.parseInt(parts[1].trim()); 
+                    } catch (NumberFormatException ignored) { 
+                        // keep the default STREAM_PORT if parsing fails
+                    }
+                }
+
                 log.info("Server is ready. Starting FFmpeg receiver...");
                 System.out.println("Server is ready. Starting playback...");
 
-                // For RTP/UDP, receive the SDP file from the server before starting FFplay
+                Process player;
+                // Each protocol needs a different startup order
                 if (chosenProtocol.equalsIgnoreCase("RTP/UDP")) {
+                    // read the SDP first then start FFplay on it
                     receiveSdpFile(in);
+                    player = startReceiving(chosenProtocol, streamPort);
+                } else if (chosenProtocol.equalsIgnoreCase("UDP")) {
+                    // listen first then tell the server GO
+                    player = startReceiving(chosenProtocol, streamPort); 
+                    out.println("GO"); 
+                } else {
+                    // connect to ffmpeg
+                    player = startReceiving(chosenProtocol, streamPort);
                 }
-                // start local reciever thread first
-                startReceiving(chosenProtocol);
                 
-                // give FFplay 500ms to open socket listener
-                try {
-                    Thread.sleep(500);
-                    
-                } catch (InterruptedException ignored)
-                {
+                // stay alive while playing
+                if (player != null) {
+                    player.waitFor();                                 
+                    log.info("Playback finished.");
                 }
             }
-
         } catch (IOException e) {
             log.error("Connection error: {}", e.getMessage());
+        } catch (InterruptedException e) {
+            log.warn("Interrupted while streaming: {}", e.getMessage());
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -259,7 +282,7 @@ public class StreamingClient {
         // else determine from resolution in filename
         String resolution = "";
         try {
-            // extract the resolution by splitting on - and then on .
+            // extract the resolution by splitting on - and then on
             String[] parts = chosenFile.split("-");
             String resPart = parts[1].split("\\.")[0];  // e.g. "480p"
             resolution = resPart;
@@ -287,29 +310,42 @@ public class StreamingClient {
 
     // launches FFplay as a stream receiver using ProcessBuilder
     // FF[lay connects to the stream the server started and plays it back
-    private void startReceiving(String protocol) {
-        log.info("Starting FFplay receiver for protocol: {}", protocol);
+    private Process startReceiving(String protocol, int streamPort) {
+    log.info("Starting FFplay receiver for {} on port {}", protocol, streamPort);
 
         try {
             List<String> command = new ArrayList<>();
             command.add("C:\\ffmpeg\\bin\\ffplay.exe");
 
+            // close the window automatically when the stream ends only for TCP
+            command.add("-autoexit"); 
+            
             // Build input URL based on the chosen protocol
             switch (protocol.toUpperCase()) {
                 case "TCP":
-                    command.add("tcp://localhost:" + STREAM_PORT);
+                    // ffplay connects out to ffmpeg, who is listening
+                    // destination is the reciever
+                    command.add("tcp://localhost:" + streamPort);
                     break;
                 case "UDP":
-                    command.add("udp://localhost:" + STREAM_PORT);
+                    // ffplay is the reciever, it binds the port and waits
+                    //  0.0.0.0 = any interface
+                    command.add("udp://0.0.0.0:" + streamPort + "?buffer_size=1048576&listen=1");
                     break;
                 case "RTP/UDP":
+                    // ffplay reads the SDP file (which already contains the port
                     command.add("-protocol_whitelist");
                     command.add("file,rtp,udp");
+                    command.add("-reorder_queue_size"); 
+                    command.add("16");   // jitter buffer
+                    command.add("-max_delay");
+                    command.add("500000");
                     command.add("-i");
                     command.add(System.getProperty("user.dir") + "/video.sdp");
                     break;
                 default:
-                    command.add("udp://localhost:" + STREAM_PORT);
+                    // UDP 
+                    command.add("udp://0.0.0.0:" + streamPort + "?buffer_size=1048576&listen=1");
             }
 
             log.info("FFplay receive command: {}", String.join(" ", command));
@@ -319,9 +355,10 @@ public class StreamingClient {
             Process process = pb.start();
 
             log.info("FFplay receiver process started.");
-
+            return process;
         } catch (IOException e) {
             log.error("Failed to start FFplay receiver: {}", e.getMessage());
+            return null;
         }
     }
 
