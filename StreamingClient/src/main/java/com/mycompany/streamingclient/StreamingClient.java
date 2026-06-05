@@ -42,7 +42,7 @@ public class StreamingClient {
 
     // The URL used for the download speed test
     private static final String SPEED_TEST_URL
-            = "http://ipv4.download.thinkbroadband.com/5MB.zip";
+            = "http://speedtest.tele2.net/10MB.zip";
 
     // Scanner for reading user input from the console
     private final Scanner scanner = new Scanner(System.in);
