@@ -17,25 +17,37 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.CountDownLatch;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.LogManager;
 
 /*
-Runs a 5 second download speed test to measure the connection in Kbps
-Asks user to choose a preferred video format (avi, mp4, mkv)
-Connects to StreamingServer on port 8000 and sends the speed and format
-Receives filtered file list from server and displays it
-Asks user to choose a file and optionally streaming protocol
-Sends the choice to the server and waits for READY signal
-Launches FFmpeg with ProcessBuilder to receive and play the stream
+Asks the load balancer (port 7070) which streaming server to connect to.
+Runs a 5 second download speed test to measure the connection in Kbps.
+Asks user to choose a preferred video format (avi, mp4, mkv).
+Connects to the assigned StreamingServer over an encrypted SSL socket and sends
+the speed and format.
+Receives filtered file list from server and displays it.
+Asks user to choose a file and optionally streaming protocol.
+Sends the choice to the server and waits for the READY signal.
+Launches FFplay with ProcessBuilder to receive and play the stream.
  */
 public class StreamingClient {
 
     static Logger log = LogManager.getLogger(StreamingClient.class);
 
     // Server address and control port
-    private static final String SERVER_HOST = "localhost";
-    private static final int SERVER_PORT = 8000;
+    private static final String SERVER_HOST = "localhost"; 
+    // private static final int SERVER_PORT = 8000;
+    
+    // client first asks the balancer which server /control port to use
+    private static final String BALANCER_HOST = "localhost";
+    private static final int BALANCER_PORT = 7070;
+    
+    // SSL/TLS
+    private static final String TRUSTSTORE_FILE = "streaming.jks";
+    private static final String TRUSTSTORE_PASSWORD = "streaming";
 
     // Default port FFplay listens on if the server does not send one
     private static final int STREAM_PORT = 9000;
@@ -56,8 +68,46 @@ public class StreamingClient {
         String format = askFormat();
         log.info("User selected format: {}", format);
 
+        // ask load balancer which server to connect to
+        int serverPort = askBalancerForPort();
+        if (serverPort == -1) {
+            log.error("No streaming server available. Exiting.");
+            System.out.println("No streaming server is currently available.");
+            return;
+        }
+        
         // connect to server and handle communication
-        connectAndStream(speedKbps, format);
+        connectAndStream(speedKbps, format, serverPort);
+    }
+    
+    
+    private int askBalancerForPort() {
+        log.info("Contacting load balancer at {}:{}", BALANCER_HOST, BALANCER_PORT);
+        //ask the load balancer which streaming server to use
+        try (
+            Socket balancerSocket = new Socket(BALANCER_HOST, BALANCER_PORT);
+            BufferedReader balancerIn = new BufferedReader(
+                    new InputStreamReader(balancerSocket.getInputStream()));
+        ) {
+            // balancer sends the assigned port or -1 on failure
+            String portLine = balancerIn.readLine();
+            // reeturn that port or -1 on failure
+            if (portLine == null) {
+                log.error("Load balancer closed the connection without replying.");
+                return -1;
+            }
+ 
+            int assignedPort = Integer.parseInt(portLine.trim());
+            log.info("Load balancer assigned server port: {}", assignedPort);
+            return assignedPort;
+ 
+        } catch (IOException e) {
+            log.error("Could not reach load balancer: {}", e.getMessage());
+            return -1;
+        } catch (NumberFormatException e) {
+            log.error("Load balancer sent an invalid port value: {}", e.getMessage());
+            return -1;
+        }
     }
 
     // 5 second download test using JSpeedTest and returns measured download speed 
@@ -131,16 +181,22 @@ public class StreamingClient {
 
     // Opens the socket connection to the server and handles sending speed+format, 
     // receiving the file list, asking the user to choose, sending the choice, starting FFmpeg
-    private void connectAndStream(int speedKbps, String format) {
-        log.info("Connecting to server at {}:{}", SERVER_HOST, SERVER_PORT);
+    private void connectAndStream(int speedKbps, String format, int serverPort) {
+        log.info("Connecting to server at {}:{}", SERVER_HOST, serverPort);
 
+        // point the JVM at the truststore so client trusts server cert
+        System.setProperty("javax.net.ssl.trustStore", TRUSTSTORE_FILE);
+        System.setProperty("javax.net.ssl.trustStorePassword", TRUSTSTORE_PASSWORD);
+ 
+        SSLSocketFactory sslFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+        
         try (
-            Socket socket = new Socket(SERVER_HOST, SERVER_PORT); 
+            SSLSocket socket = (SSLSocket) sslFactory.createSocket(SERVER_HOST, serverPort);
             PrintWriter out = new PrintWriter(socket.getOutputStream(), true); 
             BufferedReader in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream()));) 
         {
-            log.info("Connected to server.");
+            log.info("Connected to server - SSL.");
 
             // Send speed and format to the server
             // server expects two lines: speed in Kbps then format

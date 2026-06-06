@@ -16,28 +16,37 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLServerSocket;
+import javax.net.ssl.SSLServerSocketFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 /*
-Runs VideoHandler to scan /videos and create any missing files
-Opens a ServerSocket on port 8000 and waits for a client to connect.
-When client connects  a ClientHandler task is submitted to a thread
+Runs VideoHandler to scan /videos and create any missing files.
+Opens an SSL server socket on its control port and waits for clients to connect.
+For every client that connects a ClientHandler task is submitted to a thread
 pool, so multiple clients can be served at the same time.
-Every ClientHander:
-Receives the client download speed (Kbps) and chosen format
-Finds the available file list and returns matching
-Receives client chosen filename and chosen protocol
-Starts FFmpeg streaming using ProcessBuilder 
-
- All communication over the socket uses plain text lines (PrintWriter / BufferedReader).
- */
+ 
+The control port auto-increments if busy, so the same server can be launched
+several times and each instance takes the next free port (8000, 8010, ...).
+ 
+The control channel is encrypted with SSL/TLS. The server presents the
+certificate stored in streaming.jks and the client connects over an SSLSocket.
+ 
+All communication over the control socket uses plain text lines
+(PrintWriter / BufferedReader), now sent over the encrypted connection.
+*/
 public class StreamingServer {
 
     static Logger log = LogManager.getLogger(StreamingServer.class);
 
-    private static final int PORT = 8000;
-
+    // after creating load balancer this is removed // private static final int PORT = 8000;
+    private int port;
+    
+    // holds servers certificate and private key
+    private static final String KEYSTORE_FILE = "streaming.jks";
+    private static final String KEYSTORE_PASSWORD = "streaming";
+    
     // Bitrate thresholds in Kbps
     // A resolution is included in the filtered list only if maximum bitrate
     // is less or equal to the client reported download speed
@@ -54,12 +63,19 @@ public class StreamingServer {
     //  base -> media / RTP port
     // base + 1 -> RTCP port (only for RTP/UDP)
     // The next client starts 4 ports higher, leaving room for the RTCP pair
-    private final AtomicInteger nextStreamPort = new AtomicInteger(9000);
+    // private final AtomicInteger nextStreamPort = new AtomicInteger(9000);
+    
+    // after load balancer 
+    private final AtomicInteger nextStreamPort;
     
     // Constructor 
     // initialises VideoHandler, scans /videos and transforms missing 
     // files before the server starts accepting connections
-    public StreamingServer() throws IOException {
+    public StreamingServer(int port) throws IOException {
+        this.port = port;
+        
+        this.nextStreamPort = new AtomicInteger(9000);
+        
         String videosDir = System.getProperty("user.dir") + "/videos/";
         log.info("Initialising VideoHandler, videos directory: {}", videosDir);
         videoHandler = new VideoHandler(videosDir);
@@ -72,11 +88,32 @@ public class StreamingServer {
     // every accepted client is wrapped in a ClientHandler task and handed to
     // the thread pool, so the loop is free to accept the next client
     public void start() {
-        log.info("Starting server on port {}...", PORT);
+        // point the JVM at the keystore that holds certificate and key
+        System.setProperty("javax.net.ssl.keyStore", KEYSTORE_FILE);
+        System.setProperty("javax.net.ssl.keyStorePassword", KEYSTORE_PASSWORD);
+ 
+        // build SSL server socket factory
+        SSLServerSocketFactory sslFactory =
+                (SSLServerSocketFactory) SSLServerSocketFactory.getDefault();
+        
+        SSLServerSocket serverSocket = null;
 
-        try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-            log.info("Server is listening on port {}", PORT);
+        // find a free port
+        while (serverSocket == null) {
+            try {
+                serverSocket = (SSLServerSocket) sslFactory.createServerSocket(port);
+            } catch (IOException e) {
+                //  f port is busy climb by 10 untill a free one is found
+                log.warn("Port {} is busy, trying {}...", port, port + 10);
+                port = port + 10;
+            }
+        }
 
+        log.info("Server - SSL is listening on port {}", port);
+        // set the stream-port range from new port
+        nextStreamPort.set(9000 + (port - 8000) * 10);
+        
+        try {
             // keeps running so the server can serve multiple clients 
             while (true) {
                 log.info("Waiting for client connection...");
@@ -84,6 +121,7 @@ public class StreamingServer {
                 log.info("Client connected from: {}", clientSocket.getInetAddress());
 
                 // Handle the connected client // handleClient(clientSocket);
+                
                 // Instead handleClient() and blocking the loop wrap the 
                 // socket handling in a task and submit it to the thread pool
                 // Pass this so ClientHandler can access helper methods
@@ -93,6 +131,13 @@ public class StreamingServer {
         } catch (IOException e) {
             log.error("Server error: {}", e.getMessage());
         } finally {
+            // close listening socket
+            try {
+                serverSocket.close();
+            } catch (IOException e) {
+                log.error("Error closing server socket: {}", e.getMessage());
+            }
+            
             // Clean thread pool on shutdown
             threadPool.shutdown();
         }
@@ -358,9 +403,23 @@ public class StreamingServer {
 
     //creates StreamingServer instance and calls start()
     public static void main(String[] args) {
+        // load balancer
+        // control port can be passed as the first argument so several 
+        // StreamingServer instances run at the same time behind the load balancer, 
+        // each on its own port
+        // iff no argument is given, default to port 8000 
+        int port = 8000;
+        if (args.length > 0) {
+            try {
+                port = Integer.parseInt(args[0].trim());
+            } catch (NumberFormatException e) {
+                log.warn("Invalid port argument '{}', defaulting to 8000.", args[0]);
+            }
+        }
+        
         log.info("=== Streaming Server Starting ===");
         try {
-            StreamingServer server = new StreamingServer();
+            StreamingServer server = new StreamingServer(port);
             server.start();
         } catch (IOException e) {
             log.error("Failed to initialise server: {}", e.getMessage());
