@@ -110,6 +110,11 @@ public class StreamingServer {
         }
 
         log.info("Server - SSL is listening on port {}", port);
+        
+        // GUI
+        Dashboard.setPort(port);
+        Dashboard.logLine("Server listening on port " + port);
+        
         // set the stream-port range from new port
         nextStreamPort.set(9000 + (port - 8000) * 10);
         
@@ -119,6 +124,9 @@ public class StreamingServer {
                 log.info("Waiting for client connection...");
                 Socket clientSocket = serverSocket.accept();
                 log.info("Client connected from: {}", clientSocket.getInetAddress());
+                
+                // GUI show the incoming connection in dashboard log
+                Dashboard.logLine("Client connected from: " + clientSocket.getInetAddress().getHostAddress());
 
                 // Handle the connected client // handleClient(clientSocket);
                 
@@ -418,6 +426,15 @@ public class StreamingServer {
         }
         
         log.info("=== Streaming Server Starting ===");
+        
+        // GUI 
+        // each StreamingServer process opens its own window
+        try {
+            javax.swing.SwingUtilities.invokeAndWait(() -> new Dashboard().setVisible(true));
+        } catch (Exception e) {
+            log.warn("Could not start server GUI: {}", e.getMessage());
+        }
+ 
         try {
             StreamingServer server = new StreamingServer(port);
             server.start();

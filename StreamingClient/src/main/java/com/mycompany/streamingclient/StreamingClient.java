@@ -46,6 +46,8 @@ public class StreamingClient {
     private static final int BALANCER_PORT = 7070;
     
     // SSL/TLS
+    // The same streaming.jks file is used as client truststore
+    // (it trusts the certificate the server presents)
     private static final String TRUSTSTORE_FILE = "streaming.jks";
     private static final String TRUSTSTORE_PASSWORD = "streaming";
 
@@ -60,19 +62,32 @@ public class StreamingClient {
     private final Scanner scanner = new Scanner(System.in);
 
     public void run() {
+        // GUI
+        // first window (speed test progress and format choice)
+        Waiting waiting = new Waiting();
+        waiting.setVisible(true);
+
         // measure the connection speed
-        int speedKbps = measureSpeed();
+        int speedKbps = measureSpeed(waiting);
         log.info("Measured download speed: {} Kbps", speedKbps);
+        
+        // show the result and enable the Continue button
+        // then wait for user to pick a format and press continue
+        waiting.setSpeed(speedKbps);
+        String format = waiting.awaitFormatChoice();
+        waiting.dispose();
 
         // ask user to pick a format
-        String format = askFormat();
+        // String format = askFormat();
         log.info("User selected format: {}", format);
 
         // ask load balancer which server to connect to
         int serverPort = askBalancerForPort();
         if (serverPort == -1) {
             log.error("No streaming server available. Exiting.");
-            System.out.println("No streaming server is currently available.");
+            javax.swing.JOptionPane.showMessageDialog(null,
+                "No streaming server is currently available.",
+                "Streaming Client", javax.swing.JOptionPane.WARNING_MESSAGE);
             return;
         }
         
@@ -89,7 +104,7 @@ public class StreamingClient {
             BufferedReader balancerIn = new BufferedReader(
                     new InputStreamReader(balancerSocket.getInputStream()));
         ) {
-            // balancer sends the assigned port or -1 on failure
+            // balancer sends the assigned port or -1
             String portLine = balancerIn.readLine();
             // reeturn that port or -1 on failure
             if (portLine == null) {
@@ -112,8 +127,9 @@ public class StreamingClient {
 
     // 5 second download test using JSpeedTest and returns measured download speed 
     // If speed test fails -> value of 1000 Kbps is returned and application can continue
-    private int measureSpeed() {
-        log.info("Starting 5-second download speed test...");
+    // Waiting GUI window is updated with the download progress
+    private int measureSpeed(Waiting waiting) {
+        log.info("Starting 5 second download speed test...");
 
         // using an array so it can be set from inside the anonymous listener class 
         final int[] resultKbps = {1000};
@@ -147,6 +163,10 @@ public class StreamingClient {
                 double bps = report.getTransferRateBit().doubleValue();
                 log.debug("Speed test progress: {}% - current speed: {} Kbps",
                         (int) percent, (int) (bps / 1000));
+                // update the GUI progress bar
+                if (waiting != null) {
+                    waiting.setProgress((int) percent);
+                }
             }
         });
 
@@ -163,7 +183,8 @@ public class StreamingClient {
         
         return resultKbps[0];
     }
-
+    
+    /*
     // asks the user to type preferred video format (avi, mp4, mkv are accepted) 
     // repeats until valid format is entered
     private String askFormat() {
@@ -178,7 +199,8 @@ public class StreamingClient {
         }
         return format;
     }
-
+    */
+    
     // Opens the socket connection to the server and handles sending speed+format, 
     // receiving the file list, asking the user to choose, sending the choice, starting FFmpeg
     private void connectAndStream(int speedKbps, String format, int serverPort) {
@@ -216,29 +238,45 @@ public class StreamingClient {
             log.info("Server sent {} matching files.", fileCount);
 
             if (fileCount == 0) {
-                System.out.println("No files available for your connection speed and format.");
-                log.warn("Server returned 0 files for speed {} Kbps and format {}.",
-                        speedKbps, format);
+                log.warn("Server returned 0 files for speed {} Kbps and format {}.", speedKbps, format);
+                javax.swing.JOptionPane.showMessageDialog(null,
+                    "No files available for your connection speed and format.",
+                    "Streaming Client", javax.swing.JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
 
             // Read each filename into a list and display it to the user
             List<String> fileList = new ArrayList<>();
-            System.out.println("\nAvailable files:");
+            // System.out.println("\nAvailable files:");
             for (int i = 0; i < fileCount; i++) {
                 String filename = in.readLine();
                 fileList.add(filename);
-                System.out.println("  " + (i + 1) + ". " + filename);
+                // System.out.println("  " + (i + 1) + ". " + filename);
             }
 
             // Ask user to choose a file
-            String chosenFile = askFileChoice(fileList);
+            //String chosenFile = askFileChoice(fileList);
+            //log.info("User chose file: {}", chosenFile);
+            
+            // GUI second window (file list and protocol selection)
+            Selection selection = new Selection(speedKbps, fileList);
+            selection.setVisible(true);
+            selection.awaitChoice(); // blocks until the user presses Stream
+            String chosenFile = selection.getChosenFile();
+            String chosenProtocol = selection.getChosenProtocol();
+            selection.dispose();
             log.info("User chose file: {}", chosenFile);
 
             // Ask user to choose a protocol
             // The protocol can be chosen manually or assigned automatically
             // based on the resolution of the chosen file
-            String chosenProtocol = askProtocol(chosenFile);
+            // String chosenProtocol = askProtocol(chosenFile);
+            // log.info("Using protocol: {}", chosenProtocol);
+            
+            // If user left protocol on Auto, choose it from file's resolution
+            if (chosenProtocol.equalsIgnoreCase("Auto")) {
+                chosenProtocol = askProtocol(chosenFile);
+            }
             log.info("Using protocol: {}", chosenProtocol);
 
             // Send file and protocol choice to the server
@@ -250,7 +288,9 @@ public class StreamingClient {
             String serverResponse = in.readLine();
             if (serverResponse == null || serverResponse.startsWith("ERROR")) {
                 log.error("Server error: {}", serverResponse);
-                System.out.println("Server error: " + serverResponse);
+                javax.swing.JOptionPane.showMessageDialog(null,
+                        "Server error: " + serverResponse,
+                        "Streaming Client", javax.swing.JOptionPane.ERROR_MESSAGE);
                 return;
             }
 
@@ -268,8 +308,11 @@ public class StreamingClient {
                     }
                 }
 
-                log.info("Server is ready. Starting FFmpeg receiver...");
-                System.out.println("Server is ready. Starting playback...");
+                log.info("Server is ready. Stream port: {}", streamPort);
+                
+                // GUI playback status window
+                Status status = new Status(chosenFile, chosenProtocol);
+                status.setVisible(true);
 
                 Process player;
                 // Each protocol needs a different startup order
@@ -291,6 +334,9 @@ public class StreamingClient {
                     player.waitFor();                                 
                     log.info("Playback finished.");
                 }
+                
+                status.setFinished();
+                status.dispose();
             }
         } catch (IOException e) {
             log.error("Connection error: {}", e.getMessage());
@@ -300,6 +346,7 @@ public class StreamingClient {
         }
     }
 
+    /*
     // displays the file list and asks user to pick one by entering its number. 
     // Repeats until a valid number is entered.
     private String askFileChoice(List<String> fileList) {
@@ -316,7 +363,8 @@ public class StreamingClient {
             System.out.println("Invalid choice. Enter a number between 1 and " + fileList.size());
         }
     }
-
+    */
+    
     /* 
     asks user to manually choose streaming protocol or press Enter to let 
     client choose automatically based on resolution of selected file
@@ -326,7 +374,7 @@ public class StreamingClient {
     720p, 1080p -> RTP/UDP
      */
     private String askProtocol(String chosenFile) {
-        System.out.println("\nChoose a streaming protocol (TCP / UDP / RTP/UDP)");
+        /* System.out.println("\nChoose a streaming protocol (TCP / UDP / RTP/UDP)");
         System.out.println("Or press Enter to choose automatically based on resolution:");
         String input = scanner.nextLine().trim().toUpperCase();
 
@@ -334,11 +382,11 @@ public class StreamingClient {
         if (input.equals("TCP") || input.equals("UDP") || input.equals("RTP/UDP")) {
             return input;
         }
-
+        */
         // else determine from resolution in filename
         String resolution = "";
         try {
-            // extract the resolution by splitting on - and then on
+            // extract the resolution by splitting on - and then on .
             String[] parts = chosenFile.split("-");
             String resPart = parts[1].split("\\.")[0];  // e.g. "480p"
             resolution = resPart;
@@ -374,7 +422,7 @@ public class StreamingClient {
             command.add("C:\\ffmpeg\\bin\\ffplay.exe");
 
             // close the window automatically when the stream ends only for TCP
-            command.add("-autoexit"); 
+            // command.add("-autoexit"); 
             
             // Build input URL based on the chosen protocol
             switch (protocol.toUpperCase()) {

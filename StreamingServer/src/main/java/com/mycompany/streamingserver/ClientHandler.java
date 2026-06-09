@@ -36,6 +36,11 @@ public class ClientHandler implements Runnable {
 
     @Override
     public void run() {
+        // capture client IP so it is still available in finally after close
+        final String clientIp = clientSocket.getInetAddress().getHostAddress();
+        // GUI
+        Dashboard.clientConnected();
+        
         // tracking variables (for stats)
         int clientSpeedKbps = 0;
         String chosenFile = "unknown";
@@ -74,7 +79,7 @@ public class ClientHandler implements Runnable {
             log.info("Sending {} matching files to client [{}].", filtered.size(), clientSocket.getInetAddress());
 
             // Send the total number of files
-            out.println(filtered.size());
+            out.println(filtered.size()); 
 
             // Send each matching filename option on its own line
             for (VideoHandler.VideoFile vf : filtered) {
@@ -164,6 +169,9 @@ public class ClientHandler implements Runnable {
 
             log.info("Streaming started for [{}] on port {} ({}).", clientIP, basePort, chosenProtocol);
 
+            // GUI
+            Dashboard.logLine("Streaming " + chosenFile + " (" + chosenProtocol + ") to " + clientIP);
+            
             if (streamingProcess != null) {
                 // block until the file is fully streamed
                 streamingProcess.waitFor(); 
@@ -178,28 +186,38 @@ public class ClientHandler implements Runnable {
             // Restore the interrupted status flag
             Thread.currentThread().interrupt();
         } finally {
+            // GUI
+            Dashboard.clientDisconnected();
+            Dashboard.logLine("Client finished: " + clientIp);
+            
             // Calculate total playback session duration in sec
             long endTime = System.currentTimeMillis();
             // streamStartTime stays 0 if streaming never started
             long playbackDurationSeconds = 
                     streamStartTime > 0 ? (endTime - streamStartTime) / 1000 : 0;
 
-            // Structured data in format IP;Speed;FileChosen;Protocol;Duration;BitrateKbps
-            statsLogger.info(String.format("%s;%d;%s;%s;%d;%d", 
-                    clientSocket.getInetAddress().getHostAddress(),
-                    clientSpeedKbps,
-                    chosenFile,
-                    chosenProtocol,
-                    playbackDurationSeconds,
-                    bitrateKbps));
+            // Structured data 
+            statsLogger.info(String.format(
+                "IP:       %s%n"
+                + "Speed:    %d Kbps%n"
+                + "File:     %s%n"
+                + "Protocol: %s%n"
+                + "Duration: %d s%n"
+                + "Bitrate:  %d Kbps",
+                clientSocket.getInetAddress().getHostAddress(),
+                clientSpeedKbps,
+                chosenFile,
+                chosenProtocol,
+                playbackDurationSeconds,
+                bitrateKbps));
 
-                // Clean up + release network socket resources
-                try {
-                    clientSocket.close();
-                    log.info("Client socket closed for [{}].", clientSocket.getInetAddress());
-                } catch (IOException e) {
-                    log.error("Error closing client socket: {}", e.getMessage());
-                }
+            // Clean up + release network socket resources
+            try {
+                clientSocket.close();
+                log.info("Client socket closed for [{}].", clientSocket.getInetAddress());
+            } catch (IOException e) {
+                log.error("Error closing client socket: {}", e.getMessage());
+            }
         }
     }
 }
