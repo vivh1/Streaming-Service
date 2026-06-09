@@ -38,8 +38,11 @@ public class ClientHandler implements Runnable {
     public void run() {
         // capture client IP so it is still available in finally after close
         final String clientIp = clientSocket.getInetAddress().getHostAddress();
-        // GUI
-        Dashboard.clientConnected();
+        
+        // track whether this connection was counted as a real client
+        // (load balancer live check connects and disconnects without sending
+        // anything -> only count once having received speed/format)
+        boolean counted = false;
         
         // tracking variables (for stats)
         int clientSpeedKbps = 0;
@@ -66,6 +69,11 @@ public class ClientHandler implements Runnable {
                 log.warn("Client disconnected before sending speed/format.");
                 return;
             }
+            
+            // GUI
+            Dashboard.clientConnected();
+            counted = true;
+            Dashboard.logLine("Client connected: " + clientIp);
 
             // Parse incoming connection attributes
             clientSpeedKbps = Integer.parseInt(speedLine.trim());
@@ -186,31 +194,35 @@ public class ClientHandler implements Runnable {
             // Restore the interrupted status flag
             Thread.currentThread().interrupt();
         } finally {
-            // GUI
-            Dashboard.clientDisconnected();
-            Dashboard.logLine("Client finished: " + clientIp);
+            if (counted) {
+                // GUI
+                Dashboard.clientDisconnected();
+                Dashboard.logLine("Client finished: " + clientIp);
+            }
             
             // Calculate total playback session duration in sec
             long endTime = System.currentTimeMillis();
             // streamStartTime stays 0 if streaming never started
             long playbackDurationSeconds = 
                     streamStartTime > 0 ? (endTime - streamStartTime) / 1000 : 0;
-
-            // Structured data 
-            statsLogger.info(String.format(
-                "IP:       %s%n"
-                + "Speed:    %d Kbps%n"
-                + "File:     %s%n"
-                + "Protocol: %s%n"
-                + "Duration: %d s%n"
-                + "Bitrate:  %d Kbps",
-                clientSocket.getInetAddress().getHostAddress(),
-                clientSpeedKbps,
-                chosenFile,
-                chosenProtocol,
-                playbackDurationSeconds,
-                bitrateKbps));
-
+            
+            // only log stats for sessions that actually started streaming
+            if (streamStartTime > 0) {
+                // Structured data 
+                statsLogger.info(String.format(
+                    "IP:       %s%n"
+                    + "Speed:    %d Kbps%n"
+                    + "File:     %s%n"
+                    + "Protocol: %s%n"
+                    + "Duration: %d s%n"
+                    + "Bitrate:  %d Kbps",
+                    clientSocket.getInetAddress().getHostAddress(),
+                    clientSpeedKbps,
+                    chosenFile,
+                    chosenProtocol,
+                    playbackDurationSeconds,
+                    bitrateKbps));
+            }
             // Clean up + release network socket resources
             try {
                 clientSocket.close();

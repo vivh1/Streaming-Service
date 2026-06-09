@@ -1,23 +1,4 @@
-2026-06-03 18:59:58;127.0.0.1;1000;Sky-360p.mp4;UDP;13
-2026-06-04 18:27:47;127.0.0.1;1000;Sky-360p.mkv;RTP/UDP;55
-2026-06-05 02:25:23;127.0.0.1;1000;Sky-360p.mkv;UDP;49
-2026-06-05 02:28:00;127.0.0.1;1000;Sky-360p.avi;UDP;57
-2026-06-05 02:28:13;127.0.0.1;1000;Sky-240p.mp4;TCP;60
-2026-06-05 03:49:36;127.0.0.1;1000;Sky-240p.mp4;TCP;25;700
-2026-06-05 03:50:07;127.0.0.1;1000;Sky-360p.avi;UDP;35;1000
-2026-06-05 04:00:04;127.0.0.1;1000;Sky-360p.avi;TCP;26;1000
-2026-06-05 04:00:16;127.0.0.1;1000;Sky-360p.mkv;UDP;36;1000
-2026-06-05 04:39:57;127.0.0.1;7506;Sky-1080p.avi;RTP/UDP;35;6000
-2026-06-06 04:27:21;127.0.0.1;0;unknown;unknown;0;-1
-2026-06-06 04:27:37;127.0.0.1;0;unknown;unknown;0;-1
-2026-06-06 04:28:46;127.0.0.1;7982;Sky-360p.avi;TCP;26;1000
-2026-06-06 04:29:08;127.0.0.1;7718;Sky-720p.mp4;RTP/UDP;35;4000
-2026-06-06 05:19:33;127.0.0.1;0;unknown;unknown;0;-1
-2026-06-06 05:19:58;127.0.0.1;0;unknown;unknown;0;-1
-2026-06-06 05:21:04;127.0.0.1;7606;Sky-240p.avi;TCP;18;700
-2026-06-06 05:26:18;127.0.0.1;0;unknown;unknown;0;-1
-2026-06-06 05:28:14;127.0.0.1;8167;Sky-240p.avi;TCP;26;700
-=== 2026-06-08 03:46:32 ===
+=== 2026-06-09 03:24:10 ===
 IP:       127.0.0.1
 Speed:    0 Kbps
 File:     unknown
@@ -25,111 +6,15 @@ Protocol: unknown
 Duration: 0 s
 Bitrate:  -1 Kbps
 
-=== 2026-06-08 03:47:53 ===
+=== 2026-06-09 03:25:23 ===
 IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 03:47:57 ===
-IP:       127.0.0.1
-Speed:    8886 Kbps
-File:     Sky-720p.mkv
-Protocol: RTP/UDP
-Duration: 35 s
-Bitrate:  4000 Kbps
-
-=== 2026-06-08 03:48:38 ===
-IP:       127.0.0.1
-Speed:    8895 Kbps
-File:     Sky-1080p.mp4
-Protocol: RTP/UDP
-Duration: 35 s
-Bitrate:  6000 Kbps
-
-=== 2026-06-08 05:59:22 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 06:00:31 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 06:01:15 ===
-IP:       127.0.0.1
-Speed:    7243 Kbps
-File:     Sky-1080p.avi
-Protocol: RTP/UDP
-Duration: 35 s
-Bitrate:  6000 Kbps
-
-=== 2026-06-08 06:01:24 ===
-IP:       127.0.0.1
-Speed:    5930 Kbps
-File:     Sky-240p.mkv
-Protocol: UDP
-Duration: 35 s
-Bitrate:  700 Kbps
-
-=== 2026-06-08 06:02:56 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 06:03:00 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 06:03:42 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 06:04:21 ===
-IP:       127.0.0.1
-Speed:    7265 Kbps
-File:     Sky-240p.mkv
+Speed:    7040 Kbps
+File:     Sky-240p.mp4
 Protocol: TCP
 Duration: 25 s
 Bitrate:  700 Kbps
 
-=== 2026-06-08 06:04:26 ===
-IP:       127.0.0.1
-Speed:    7093 Kbps
-File:     Sky-240p.mp4
-Protocol: UDP
-Duration: 35 s
-Bitrate:  700 Kbps
-
-=== 2026-06-08 06:04:40 ===
-IP:       127.0.0.1
-Speed:    6144 Kbps
-File:     Sky-240p.mp4
-Protocol: RTP/UDP
-Duration: 35 s
-Bitrate:  700 Kbps
-
-=== 2026-06-08 18:02:42 ===
+=== 2026-06-09 03:28:17 ===
 IP:       127.0.0.1
 Speed:    0 Kbps
 File:     unknown
@@ -137,203 +22,19 @@ Protocol: unknown
 Duration: 0 s
 Bitrate:  -1 Kbps
 
-=== 2026-06-08 18:03:02 ===
+=== 2026-06-09 03:29:00 ===
 IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:03:27 ===
-IP:       127.0.0.1
-Speed:    5939 Kbps
+Speed:    6053 Kbps
 File:     Sky-240p.avi
 Protocol: TCP
-Duration: 8 s
+Duration: 19 s
 Bitrate:  700 Kbps
 
-=== 2026-06-08 18:03:47 ===
+=== 2026-06-09 03:48:30 ===
 IP:       127.0.0.1
-Speed:    6512 Kbps
+Speed:    6572 Kbps
 File:     Sky-240p.mp4
 Protocol: TCP
-Duration: 12 s
-Bitrate:  700 Kbps
-
-=== 2026-06-08 18:06:28 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:10:36 ===
-IP:       127.0.0.1
-Speed:    6553 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:12:01 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:12:18 ===
-IP:       127.0.0.1
-Speed:    6416 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:13:31 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:13:53 ===
-IP:       127.0.0.1
-Speed:    6250 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:15:31 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:15:37 ===
-IP:       127.0.0.1
-Speed:    6242 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:19:33 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:20:25 ===
-IP:       127.0.0.1
-Speed:    5951 Kbps
-File:     Sky-240p.mp4
-Protocol: TCP
-Duration: 4 s
-Bitrate:  700 Kbps
-
-=== 2026-06-08 18:21:27 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-08 18:21:37 ===
-IP:       127.0.0.1
-Speed:    5076 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:40:54 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:41:50 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:42:40 ===
-IP:       127.0.0.1
-Speed:    6586 Kbps
-File:     Sky-240p.mp4
-Protocol: UDP
-Duration: 35 s
-Bitrate:  700 Kbps
-
-=== 2026-06-09 02:42:52 ===
-IP:       127.0.0.1
-Speed:    7320 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:58:37 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:59:26 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 02:59:32 ===
-IP:       127.0.0.1
-Speed:    6077 Kbps
-File:     Sky-240p.mp4
-Protocol: TCP
-Duration: 2 s
-Bitrate:  700 Kbps
-
-=== 2026-06-09 02:59:36 ===
-IP:       127.0.0.1
-Speed:    6903 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 03:05:56 ===
-IP:       127.0.0.1
-Speed:    0 Kbps
-File:     unknown
-Protocol: unknown
-Duration: 0 s
-Bitrate:  -1 Kbps
-
-=== 2026-06-09 03:06:32 ===
-IP:       127.0.0.1
-Speed:    5807 Kbps
-File:     Sky-240p.mp4
-Protocol: TCP
-Duration: 16 s
+Duration: 5 s
 Bitrate:  700 Kbps
 

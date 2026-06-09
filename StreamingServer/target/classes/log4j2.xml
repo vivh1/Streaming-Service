@@ -12,7 +12,7 @@
     </Appenders>
     
     <Loggers>
-        <Logger name="StatsLogger" level="info" additivity="false">
+        <Logger name="StatsLogger" level="info" additivity="true">
             <AppenderRef ref="statsFile" />
         </Logger>
         <Root level="all" additivity="true">

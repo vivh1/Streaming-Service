@@ -3,6 +3,3 @@ target/
 
 # NetBeans
 nbproject/private/
-
-# Logs
-*.log
