@@ -38,3 +38,43 @@ Protocol: TCP
 Duration: 5 s
 Bitrate:  700 Kbps
 
+=== 2026-06-10 00:36:26 ===
+IP:       127.0.0.1
+Speed:    7764 Kbps
+File:     Sky-240p.mp4
+Protocol: TCP
+Duration: 25 s
+Bitrate:  700 Kbps
+
+=== 2026-06-10 01:13:33 ===
+IP:       127.0.0.1
+Speed:    7062 Kbps
+File:     Sky-480p.avi
+Protocol: UDP
+Duration: 35 s
+Bitrate:  2000 Kbps
+
+=== 2026-06-10 01:13:34 ===
+IP:       127.0.0.1
+Speed:    8214 Kbps
+File:     Sky-720p.mkv
+Protocol: RTP/UDP
+Duration: 35 s
+Bitrate:  4000 Kbps
+
+=== 2026-06-10 02:11:23 ===
+IP:       127.0.0.1
+Speed:    5984 Kbps
+File:     Sky-240p.mp4
+Protocol: TCP
+Duration: 24 s
+Bitrate:  700 Kbps
+
+=== 2026-06-10 02:12:39 ===
+IP:       127.0.0.1
+Speed:    8394 Kbps
+File:     Sky-1080p.avi
+Protocol: UDP
+Duration: 35 s
+Bitrate:  6000 Kbps
+
